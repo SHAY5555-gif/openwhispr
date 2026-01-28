@@ -165,7 +165,7 @@ BOOL WINAPI ConsoleHandler(DWORD signal) {
     return TRUE;
 }
 
-// Parse a compound hotkey like "CommandOrControl+Shift+F11"
+// Parse a compound hotkey like "CommandOrControl+Shift+F11" or modifier-only like "Ctrl+Alt"
 // Sets g_requireCtrl, g_requireAlt, g_requireShift and returns the main key VK code
 DWORD ParseCompoundHotkey(const char* hotkey) {
     char buffer[256];
@@ -209,6 +209,23 @@ DWORD ParseCompoundHotkey(const char* hotkey) {
         }
 
         token = strtok(NULL, "+");
+    }
+
+    // Handle modifier-only hotkeys (e.g., "Ctrl+Alt")
+    // If no main key was specified, use one of the modifiers as the main key
+    if (mainKeyVk == 0) {
+        // Prefer Alt as the main key, then Shift, then Ctrl
+        // This way "Ctrl+Alt" becomes: listen for Alt when Ctrl is held
+        if (g_requireAlt) {
+            mainKeyVk = VK_MENU;  // Alt key
+            g_requireAlt = FALSE;
+        } else if (g_requireShift) {
+            mainKeyVk = VK_SHIFT;
+            g_requireShift = FALSE;
+        } else if (g_requireCtrl) {
+            mainKeyVk = VK_CONTROL;
+            g_requireCtrl = FALSE;
+        }
     }
 
     return mainKeyVk;

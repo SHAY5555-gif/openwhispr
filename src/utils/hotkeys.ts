@@ -122,6 +122,39 @@ export function getDefaultHotkey(): string {
 }
 
 /**
+ * List of modifier key names that Electron recognizes.
+ */
+const MODIFIER_NAMES = new Set([
+  "CommandOrControl",
+  "Command",
+  "Cmd",
+  "Control",
+  "Ctrl",
+  "Alt",
+  "Option",
+  "Shift",
+  "Super",
+  "Meta",
+]);
+
+/**
+ * Checks if a hotkey is a modifier-only combination (e.g., "Ctrl+Alt").
+ * Modifier-only hotkeys don't work with Electron's globalShortcut
+ * but can work with native key listeners (like Windows push-to-talk).
+ *
+ * @param hotkey - The hotkey string to check
+ * @returns True if the hotkey consists only of modifier keys
+ */
+export function isModifierOnlyHotkey(hotkey: string): boolean {
+  if (!hotkey || !hotkey.includes("+")) {
+    return false;
+  }
+
+  const parts = hotkey.split("+");
+  return parts.every((part) => MODIFIER_NAMES.has(part));
+}
+
+/**
  * Validates if a hotkey string is in a valid format.
  * Valid formats include single keys and Electron accelerator strings.
  *

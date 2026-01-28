@@ -15,7 +15,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import { useClipboard } from "../hooks/useClipboard";
 import { useUpdater } from "../hooks/useUpdater";
 import { getTranscriptionProviders } from "../models/ModelRegistry";
-import { formatHotkeyLabel } from "../utils/hotkeys";
+import { formatHotkeyLabel, isModifierOnlyHotkey } from "../utils/hotkeys";
 import PromptStudio from "./ui/PromptStudio";
 import ReasoningModelSelector from "./ReasoningModelSelector";
 import type { UpdateInfoResult } from "../types/electron";
@@ -133,6 +133,11 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const { registerHotkey, isRegistering: isHotkeyRegistering } = useHotkeyRegistration({
     onSuccess: (registeredHotkey) => {
       setDictationKey(registeredHotkey);
+    },
+    onModifierOnlyHotkey: () => {
+      // Modifier-only hotkeys (like Ctrl+Alt) require push-to-talk mode
+      // Automatically switch to push-to-talk when such a hotkey is registered
+      setActivationMode("push");
     },
     showSuccessToast: false,
     showErrorToast: true,
@@ -553,6 +558,15 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 }}
                 disabled={isHotkeyRegistering}
               />
+
+              {isModifierOnlyHotkey(dictationKey) && (
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800">
+                    <strong>Note:</strong> Modifier-only hotkeys (like Ctrl+Alt) require{" "}
+                    <strong>push-to-talk</strong> mode. Hold the keys to record, release to stop.
+                  </p>
+                </div>
+              )}
 
               {!isUsingGnomeHotkeys && (
                 <div className="mt-6">

@@ -16,6 +16,33 @@ const SUGGESTED_HOTKEYS = {
   ],
 };
 
+// Modifier key names that Electron recognizes
+const MODIFIER_NAMES = new Set([
+  "CommandOrControl",
+  "Command",
+  "Cmd",
+  "Control",
+  "Ctrl",
+  "Alt",
+  "Option",
+  "Shift",
+  "Super",
+  "Meta",
+]);
+
+/**
+ * Check if a hotkey consists only of modifier keys (e.g., "Ctrl+Alt").
+ * These hotkeys don't work with Electron's globalShortcut but can work
+ * with native key listeners (like Windows push-to-talk).
+ */
+function isModifierOnlyHotkey(hotkey) {
+  if (!hotkey || !hotkey.includes("+")) {
+    return false;
+  }
+  const parts = hotkey.split("+");
+  return parts.every((part) => MODIFIER_NAMES.has(part));
+}
+
 class HotkeyManager {
   constructor() {
     this.currentHotkey = "`";
@@ -92,6 +119,42 @@ class HotkeyManager {
     debugLogger.log(`[HotkeyManager] Platform: ${process.platform}, Arch: ${process.arch}`);
     debugLogger.log(`[HotkeyManager] Current hotkey: "${this.currentHotkey}"`);
 
+    // Check for modifier-only hotkeys (e.g., "Ctrl+Alt")
+    const modifierOnly = isModifierOnlyHotkey(hotkey);
+    if (modifierOnly) {
+      debugLogger.log(`[HotkeyManager] Detected modifier-only hotkey: "${hotkey}"`);
+
+      // Modifier-only hotkeys only work on Windows with push-to-talk mode
+      if (process.platform !== "win32") {
+        return {
+          success: false,
+          error: `Modifier-only hotkeys like "${hotkey}" are only supported on Windows in push-to-talk mode.`,
+          reason: "modifier_only_unsupported",
+          suggestions: this.getSuggestions(hotkey),
+        };
+      }
+
+      // On Windows, allow modifier-only hotkeys but skip globalShortcut registration
+      // The Windows key listener will handle it in push-to-talk mode
+      debugLogger.log(
+        `[HotkeyManager] Modifier-only hotkey "${hotkey}" accepted (Windows push-to-talk only)`
+      );
+
+      // Unregister any previous hotkey
+      if (this.currentHotkey && this.currentHotkey !== "GLOBE" && !isModifierOnlyHotkey(this.currentHotkey)) {
+        debugLogger.log(`[HotkeyManager] Unregistering previous hotkey: "${this.currentHotkey}"`);
+        globalShortcut.unregister(this.currentHotkey);
+      }
+
+      this.currentHotkey = hotkey;
+      return {
+        success: true,
+        hotkey,
+        modifierOnly: true,
+        message: "This hotkey requires push-to-talk mode.",
+      };
+    }
+
     // If we're already using this hotkey AND it's actually registered, return success
     // Note: We need to check isRegistered because on first run, currentHotkey is set to "`"
     // but it's not actually registered yet
@@ -106,8 +169,8 @@ class HotkeyManager {
       return { success: true, hotkey };
     }
 
-    // Unregister the previous hotkey (if it's not GLOBE, which doesn't use globalShortcut)
-    if (this.currentHotkey && this.currentHotkey !== "GLOBE") {
+    // Unregister the previous hotkey (if it's not GLOBE or modifier-only, which don't use globalShortcut)
+    if (this.currentHotkey && this.currentHotkey !== "GLOBE" && !isModifierOnlyHotkey(this.currentHotkey)) {
       debugLogger.log(`[HotkeyManager] Unregistering previous hotkey: "${this.currentHotkey}"`);
       globalShortcut.unregister(this.currentHotkey);
     }

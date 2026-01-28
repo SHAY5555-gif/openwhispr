@@ -13,6 +13,11 @@ export interface UseHotkeyRegistrationOptions {
   onError?: (error: string, hotkey: string) => void;
 
   /**
+   * Callback fired when a modifier-only hotkey is registered (requires push-to-talk mode)
+   */
+  onModifierOnlyHotkey?: (hotkey: string) => void;
+
+  /**
    * Show toast notification on success (default: true)
    */
   showSuccessToast?: boolean;
@@ -66,7 +71,14 @@ export interface UseHotkeyRegistrationResult {
 export function useHotkeyRegistration(
   options: UseHotkeyRegistrationOptions = {}
 ): UseHotkeyRegistrationResult {
-  const { onSuccess, onError, showSuccessToast = true, showErrorToast = true, showAlert } = options;
+  const {
+    onSuccess,
+    onError,
+    onModifierOnlyHotkey,
+    showSuccessToast = true,
+    showErrorToast = true,
+    showAlert,
+  } = options;
 
   const [isRegistering, setIsRegistering] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -131,8 +143,18 @@ export function useHotkeyRegistration(
         }
 
         // Success!
-        if (showSuccessToast && showAlert) {
-          const displayLabel = formatHotkeyLabel(hotkey);
+        const displayLabel = formatHotkeyLabel(hotkey);
+
+        // Check if this is a modifier-only hotkey (requires push-to-talk mode)
+        if (result?.modifierOnly) {
+          if (showSuccessToast && showAlert) {
+            showAlert({
+              title: "Hotkey Saved",
+              description: `${displayLabel} requires push-to-talk mode. Switching automatically.`,
+            });
+          }
+          onModifierOnlyHotkey?.(hotkey);
+        } else if (showSuccessToast && showAlert) {
           showAlert({
             title: "Hotkey Saved",
             description: `Now using ${displayLabel} for dictation`,

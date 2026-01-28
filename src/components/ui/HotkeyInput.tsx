@@ -137,6 +137,18 @@ const MODIFIER_CODES = new Set([
   "CapsLock",
 ]);
 
+// Map modifier codes to their key names (for modifier-only hotkeys)
+const MODIFIER_KEY_MAP: Record<string, string> = {
+  ControlLeft: "Ctrl",
+  ControlRight: "Ctrl",
+  AltLeft: "Alt",
+  AltRight: "Alt",
+  ShiftLeft: "Shift",
+  ShiftRight: "Shift",
+  MetaLeft: "Meta",
+  MetaRight: "Meta",
+};
+
 export interface HotkeyInputProps {
   value: string;
   onChange: (hotkey: string) => void;
@@ -146,7 +158,42 @@ export interface HotkeyInputProps {
 }
 
 export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
-  if (MODIFIER_CODES.has(e.code)) {
+  // Check if this is a modifier key being pressed
+  const isModifierKey = MODIFIER_CODES.has(e.code);
+
+  if (isModifierKey) {
+    // Allow modifier-only combinations (e.g., Ctrl+Alt)
+    // The pressed modifier becomes the "main key", and already-held modifiers are the modifiers
+    const pressedModifier = MODIFIER_KEY_MAP[e.code];
+    if (!pressedModifier) {
+      return null;
+    }
+
+    const modifiers: string[] = [];
+
+    // Check which other modifiers are held (not the one being pressed)
+    const isCtrlPressed = e.code === "ControlLeft" || e.code === "ControlRight";
+    const isAltPressed = e.code === "AltLeft" || e.code === "AltRight";
+    const isShiftPressed = e.code === "ShiftLeft" || e.code === "ShiftRight";
+    const isMetaPressed = e.code === "MetaLeft" || e.code === "MetaRight";
+
+    // Add modifiers that are held but not the one being pressed
+    if ((e.ctrlKey || e.metaKey) && !isCtrlPressed && !isMetaPressed) {
+      modifiers.push("CommandOrControl");
+    }
+    if (e.altKey && !isAltPressed) {
+      modifiers.push("Alt");
+    }
+    if (e.shiftKey && !isShiftPressed) {
+      modifiers.push("Shift");
+    }
+
+    // Only allow modifier-only hotkeys if at least one other modifier is held
+    if (modifiers.length > 0) {
+      return [...modifiers, pressedModifier].join("+");
+    }
+
+    // Single modifier pressed alone - don't allow
     return null;
   }
 
