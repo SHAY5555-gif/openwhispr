@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { RefreshCw, Download, Command, Mic, Shield, FolderOpen } from "lucide-react";
+import { RefreshCw, Download, Command, Mic, Shield, FolderOpen, Cloud } from "lucide-react";
 import MarkdownRenderer from "./ui/MarkdownRenderer";
 import MicPermissionWarning from "./ui/MicPermissionWarning";
 import MicrophoneSettings from "./ui/MicrophoneSettings";
@@ -173,6 +173,23 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   // Auto-start state
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
+
+  // Cloud sync state
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(() => {
+    return localStorage.getItem("cloudSyncEnabled") === "true";
+  });
+  const [cloudApiUrl, setCloudApiUrl] = useState(() => {
+    return localStorage.getItem("cloudApiUrl") || "";
+  });
+
+  // Save cloud sync settings to localStorage
+  useEffect(() => {
+    localStorage.setItem("cloudSyncEnabled", cloudSyncEnabled ? "true" : "false");
+  }, [cloudSyncEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem("cloudApiUrl", cloudApiUrl);
+  }, [cloudApiUrl]);
 
   // Load auto-start state on mount (not supported on Linux)
   useEffect(() => {
@@ -636,6 +653,60 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                 onPreferBuiltInChange={setPreferBuiltInMic}
                 onDeviceSelect={setSelectedMicDeviceId}
               />
+            </div>
+
+            <div className="border-t pt-8">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Cloud Sync</h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Automatically save your transcriptions to a cloud database for backup and external access.
+                </p>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">Enable Cloud Sync</p>
+                    <p className="text-sm text-gray-600">
+                      Save transcriptions to your cloud database
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setCloudSyncEnabled(!cloudSyncEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                      cloudSyncEnabled ? "bg-indigo-600" : "bg-gray-200"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        cloudSyncEnabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+                {cloudSyncEnabled && (
+                  <div className="p-4 bg-gray-50 rounded-lg space-y-3">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Cloud API URL
+                    </label>
+                    <Input
+                      type="url"
+                      placeholder="https://your-app.vercel.app"
+                      value={cloudApiUrl}
+                      onChange={(e) => setCloudApiUrl(e.target.value)}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Enter the URL of your deployed Vercel app. Transcriptions will be sent to /api/transcripts.
+                    </p>
+                  </div>
+                )}
+                {cloudSyncEnabled && cloudApiUrl && (
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <Cloud className="h-4 w-4" />
+                    <span>Cloud sync enabled - transcriptions will be saved to {cloudApiUrl}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="border-t pt-8">

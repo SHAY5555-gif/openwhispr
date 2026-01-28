@@ -332,6 +332,9 @@ class AudioManager {
       );
 
       if (result.success && result.text) {
+        // Save RAW transcript to cloud BEFORE any AI processing/correction
+        this.saveRawToCloud(result.text);
+
         const reasoningStart = performance.now();
         const text = await this.processTranscription(result.text, "local");
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
@@ -406,6 +409,9 @@ class AudioManager {
       );
 
       if (result.success && result.text) {
+        // Save RAW transcript to cloud BEFORE any AI processing/correction
+        this.saveRawToCloud(result.text);
+
         const reasoningStart = performance.now();
         const text = await this.processTranscription(result.text, "local-parakeet");
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
@@ -1142,6 +1148,10 @@ class AudioManager {
       if (result.text && result.text.trim().length > 0) {
         timings.transcriptionProcessingDurationMs = Math.round(performance.now() - apiCallStart);
 
+        // Save RAW transcript to cloud BEFORE any AI processing/correction
+        // This preserves the original with any mistakes for external analysis
+        this.saveRawToCloud(result.text);
+
         const reasoningStart = performance.now();
         const text = await this.processTranscription(result.text, "openai");
         timings.reasoningProcessingDurationMs = Math.round(performance.now() - reasoningStart);
@@ -1202,6 +1212,9 @@ class AudioManager {
           const result = await window.electronAPI.transcribeLocalWhisper(arrayBuffer, options);
 
           if (result.success && result.text) {
+            // Save RAW transcript to cloud BEFORE any AI processing/correction
+            this.saveRawToCloud(result.text);
+
             const text = await this.processTranscription(result.text, "local-fallback");
             if (text) {
               return { success: true, text, source: "local-fallback" };
@@ -1402,11 +1415,89 @@ class AudioManager {
 
   async saveTranscription(text) {
     try {
+      // Save to local SQLite database
       await window.electronAPI.saveTranscription(text);
+
+      // Note: Raw transcripts are saved to cloud directly in the transcription methods
+      // (before AI processing) so we don't need to save here again
+
       return true;
     } catch (error) {
       return false;
     }
+  }
+
+  /**
+   * Save RAW transcript to cloud (before any AI processing/correction).
+   * This is fire-and-forget to avoid blocking the transcription pipeline.
+   * The raw transcript preserves all original mistakes for external analysis.
+   */
+  saveRawToCloud(text) {
+    const cloudSyncEnabled = localStorage.getItem("cloudSyncEnabled") === "true";
+    if (!cloudSyncEnabled) {
+      return;
+    }
+
+    const cloudApiUrl = localStorage.getItem("cloudApiUrl") || "";
+    if (!cloudApiUrl) {
+      logger.debug("Cloud sync skipped: no API URL configured", {}, "cloud");
+      return;
+    }
+
+    const language = localStorage.getItem("preferredLanguage") || "auto";
+    const useLocalWhisper = localStorage.getItem("useLocalWhisper") === "true";
+    const model = useLocalWhisper
+      ? localStorage.getItem("whisperModel") || "base"
+      : this.getTranscriptionModel();
+
+    // Fire-and-forget - don't await, don't block the transcription pipeline
+    fetch(`${cloudApiUrl}/api/transcripts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text,
+        language: language !== "auto" ? language : null,
+        model,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          response
+            .json()
+            .catch(() => ({}))
+            .then((errorData) => {
+              logger.error(
+                "Cloud sync failed",
+                {
+                  status: response.status,
+                  error: errorData.error || "Unknown error",
+                },
+                "cloud"
+              );
+            });
+        } else {
+          response.json().then((result) => {
+            logger.debug(
+              "Raw transcript saved to cloud",
+              {
+                transcriptionId: result.transcription?.id,
+              },
+              "cloud"
+            );
+          });
+        }
+      })
+      .catch((error) => {
+        logger.error(
+          "Cloud sync error",
+          {
+            error: error.message,
+          },
+          "cloud"
+        );
+      });
   }
 
   getState() {
