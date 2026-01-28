@@ -23,12 +23,14 @@ static BOOL g_isKeyDown = FALSE;
 static BOOL g_requireCtrl = FALSE;
 static BOOL g_requireAlt = FALSE;
 static BOOL g_requireShift = FALSE;
+static BOOL g_requireWin = FALSE;
 
 // Check if required modifiers are currently pressed
 BOOL AreModifiersPressed(void) {
     if (g_requireCtrl && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) return FALSE;
     if (g_requireAlt && !(GetAsyncKeyState(VK_MENU) & 0x8000)) return FALSE;
     if (g_requireShift && !(GetAsyncKeyState(VK_SHIFT) & 0x8000)) return FALSE;
+    if (g_requireWin && !((GetAsyncKeyState(VK_LWIN) & 0x8000) || (GetAsyncKeyState(VK_RWIN) & 0x8000))) return FALSE;
     return TRUE;
 }
 
@@ -125,6 +127,9 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
             if (g_requireShift && (kbd->vkCode == VK_SHIFT || kbd->vkCode == VK_LSHIFT || kbd->vkCode == VK_RSHIFT)) {
                 modifierReleased = TRUE;
             }
+            if (g_requireWin && (kbd->vkCode == VK_LWIN || kbd->vkCode == VK_RWIN)) {
+                modifierReleased = TRUE;
+            }
             if (modifierReleased) {
                 g_isKeyDown = FALSE;
                 printf("KEY_UP\n");
@@ -166,7 +171,7 @@ BOOL WINAPI ConsoleHandler(DWORD signal) {
 }
 
 // Parse a compound hotkey like "CommandOrControl+Shift+F11" or modifier-only like "Ctrl+Alt"
-// Sets g_requireCtrl, g_requireAlt, g_requireShift and returns the main key VK code
+// Sets g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin and returns the main key VK code
 DWORD ParseCompoundHotkey(const char* hotkey) {
     char buffer[256];
     strncpy(buffer, hotkey, sizeof(buffer) - 1);
@@ -176,6 +181,7 @@ DWORD ParseCompoundHotkey(const char* hotkey) {
     g_requireCtrl = FALSE;
     g_requireAlt = FALSE;
     g_requireShift = FALSE;
+    g_requireWin = FALSE;
 
     DWORD mainKeyVk = 0;
     char* token = strtok(buffer, "+");
@@ -199,9 +205,12 @@ DWORD ParseCompoundHotkey(const char* hotkey) {
             g_requireShift = TRUE;
         } else if (_stricmp(token, "Super") == 0 ||
                    _stricmp(token, "Meta") == 0 ||
-                   _stricmp(token, "Command") == 0 ||
+                   _stricmp(token, "Win") == 0) {
+            // Windows key
+            g_requireWin = TRUE;
+        } else if (_stricmp(token, "Command") == 0 ||
                    _stricmp(token, "Cmd") == 0) {
-            // Windows key - treat as Ctrl on Windows for compatibility
+            // macOS Command key - treat as Ctrl on Windows for compatibility
             g_requireCtrl = TRUE;
         } else {
             // This should be the main key
@@ -211,14 +220,16 @@ DWORD ParseCompoundHotkey(const char* hotkey) {
         token = strtok(NULL, "+");
     }
 
-    // Handle modifier-only hotkeys (e.g., "Ctrl+Alt")
+    // Handle modifier-only hotkeys (e.g., "Ctrl+Alt", "Ctrl+Meta")
     // If no main key was specified, use one of the modifiers as the main key
     if (mainKeyVk == 0) {
-        // Prefer Alt as the main key, then Shift, then Ctrl
-        // This way "Ctrl+Alt" becomes: listen for Alt when Ctrl is held
+        // Prefer Alt as the main key, then Win, then Shift, then Ctrl
         if (g_requireAlt) {
             mainKeyVk = VK_MENU;  // Alt key
             g_requireAlt = FALSE;
+        } else if (g_requireWin) {
+            mainKeyVk = VK_LWIN;  // Windows key
+            g_requireWin = FALSE;
         } else if (g_requireShift) {
             mainKeyVk = VK_SHIFT;
             g_requireShift = FALSE;
@@ -250,8 +261,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Log what we're listening for
-    fprintf(stderr, "Listening for: %s (VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d)\n",
-            argv[1], g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift);
+    fprintf(stderr, "Listening for: %s (VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d)\n",
+            argv[1], g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin);
 
     // Set up console handler for clean shutdown
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);

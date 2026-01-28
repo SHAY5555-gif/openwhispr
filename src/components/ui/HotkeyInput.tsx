@@ -178,8 +178,12 @@ export function mapKeyboardEventToHotkey(e: KeyboardEvent): string | null {
     const isMetaPressed = e.code === "MetaLeft" || e.code === "MetaRight";
 
     // Add modifiers that are held but not the one being pressed
-    if ((e.ctrlKey || e.metaKey) && !isCtrlPressed && !isMetaPressed) {
-      modifiers.push("CommandOrControl");
+    // Handle Ctrl and Meta separately for Ctrl+Win combinations
+    if (e.ctrlKey && !isCtrlPressed) {
+      modifiers.push("Ctrl");
+    }
+    if (e.metaKey && !isMetaPressed) {
+      modifiers.push("Meta");
     }
     if (e.altKey && !isAltPressed) {
       modifiers.push("Alt");
