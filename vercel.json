@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "",
+  "installCommand": "npm install --ignore-scripts --omit=dev",
+  "outputDirectory": "",
+  "framework": null,
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "@vercel/node@3.2.0"
+    }
+  },
+  "env": {
+    "NODE_VERSION": "20.x"
+  }
+}
