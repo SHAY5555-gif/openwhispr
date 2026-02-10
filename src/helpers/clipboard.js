@@ -40,8 +40,8 @@ const PASTE_DELAYS = {
 // Ensures paste is fully processed before restoring original clipboard content
 const RESTORE_DELAYS = {
   darwin: 100, // macOS: AppleScript needs time to complete keystroke
-  win32_nircmd: 80, // Windows nircmd: allow time for paste processing
-  win32_pwsh: 80, // Windows PowerShell: allow time for paste processing
+  win32_nircmd: 200, // Windows nircmd: allow time for paste processing
+  win32_pwsh: 200, // Windows PowerShell: allow time for paste processing
   linux: 200, // Linux: X11 event queue processing takes longer
 };
 
@@ -153,32 +153,53 @@ class ClipboardManager {
       // Save original clipboard content first
       const originalClipboard = clipboard.readText();
       this.safeLog(
-        "💾 Saved original clipboard content:",
+        "Saved original clipboard content:",
         originalClipboard.substring(0, 50) + "..."
       );
 
       // Copy text to clipboard first - this always works
       clipboard.writeText(text);
-      this.safeLog("📋 Text copied to clipboard:", text.substring(0, 50) + "...");
+
+      // Verify clipboard was written correctly
+      const verifyClipboard = clipboard.readText();
+      if (verifyClipboard !== text) {
+        debugLogger.warn("Clipboard write verification failed", {
+          expectedLength: text.length,
+          actualLength: verifyClipboard.length,
+          match: false,
+        });
+      }
+
+      this.safeLog("Text copied to clipboard:", text.substring(0, 50) + "...");
+      debugLogger.debug("Paste operation starting", {
+        platform,
+        textLength: text.length,
+        textPreview: text.substring(0, 80),
+      }, "clipboard");
 
       if (platform === "darwin") {
         method = "applescript";
         // Check accessibility permissions first
-        this.safeLog("🔍 Checking accessibility permissions for paste operation...");
+        this.safeLog("Checking accessibility permissions for paste operation...");
         const hasPermissions = await this.checkAccessibilityPermissions();
 
         if (!hasPermissions) {
-          this.safeLog("⚠️ No accessibility permissions - text copied to clipboard only");
+          this.safeLog("No accessibility permissions - text copied to clipboard only");
           const errorMsg =
             "Accessibility permissions required for automatic pasting. Text has been copied to clipboard - please paste manually with Cmd+V.";
           throw new Error(errorMsg);
         }
 
-        this.safeLog("✅ Permissions granted, attempting to paste...");
+        this.safeLog("Permissions granted, attempting to paste...");
         await this.pasteMacOS(originalClipboard);
       } else if (platform === "win32") {
         const nircmdPath = this.getNircmdPath();
         method = nircmdPath ? "nircmd" : "powershell";
+        debugLogger.debug("Windows paste method selected", {
+          method,
+          nircmdAvailable: !!nircmdPath,
+          nircmdPath: nircmdPath || "N/A",
+        }, "clipboard");
         await this.pasteWindows(originalClipboard);
       } else {
         method = "linux-tools";
@@ -186,19 +207,32 @@ class ClipboardManager {
       }
 
       // Log successful paste operation timing
-      this.safeLog("✅ Paste operation complete", {
+      const elapsed = Date.now() - startTime;
+      this.safeLog("Paste operation complete", {
         platform,
         method,
-        elapsedMs: Date.now() - startTime,
+        elapsedMs: elapsed,
         textLength: text.length,
       });
+      debugLogger.info("Paste operation complete", {
+        platform,
+        method,
+        elapsedMs: elapsed,
+        textLength: text.length,
+      }, "clipboard");
     } catch (error) {
-      this.safeLog("❌ Paste operation failed", {
+      this.safeLog("Paste operation failed", {
         platform,
         method,
         elapsedMs: Date.now() - startTime,
         error: error.message,
       });
+      debugLogger.error("Paste operation failed", {
+        platform,
+        method,
+        elapsedMs: Date.now() - startTime,
+        error: error.message,
+      }, "clipboard");
       throw error;
     }
   }
@@ -261,31 +295,60 @@ class ClipboardManager {
   }
 
   async pasteWindows(originalClipboard) {
-    // Try nircmd first if available, fallback to PowerShell
-    const nircmdPath = this.getNircmdPath();
+    // Use keybd_event Win32 API via PowerShell for reliable paste simulation.
+    // This is more reliable than nircmd (sendkeypress) or SendKeys because:
+    // - keybd_event injects at the OS level into the global input queue
+    // - No process focus issues (unlike SendKeys which depends on foreground window)
+    // - No external binary dependency issues (unlike nircmd)
+    const restoreDelay = RESTORE_DELAYS.win32_nircmd;
 
-    if (nircmdPath) {
-      return this.pasteWithNircmd(nircmdPath, originalClipboard);
-    } else {
-      return this.pasteWithPowerShell(originalClipboard);
+    // Try nircmd first (faster), then keybd_event, then SendKeys
+    const nircmdPath = this.getNircmdPath();
+    const methods = [
+      ...(nircmdPath ? [() => this.pasteWithNircmd(nircmdPath)] : []),
+      () => this.pasteWithKeybdEvent(),
+      () => this.pasteWithPowerShell(),
+    ];
+
+    for (let i = 0; i < methods.length; i++) {
+      try {
+        await methods[i]();
+        debugLogger.debug("Windows paste success", { methodIndex: i }, "clipboard");
+        // Restore clipboard after successful paste
+        setTimeout(() => {
+          clipboard.writeText(originalClipboard);
+          debugLogger.debug("Clipboard restored", {}, "clipboard");
+        }, restoreDelay);
+        return;
+      } catch (error) {
+        debugLogger.warn("Windows paste method failed, trying next", {
+          methodIndex: i,
+          error: error.message,
+          hasNextMethod: i < methods.length - 1,
+        }, "clipboard");
+        if (i === methods.length - 1) {
+          // All methods exhausted - restore clipboard and throw
+          clipboard.writeText(originalClipboard);
+          throw new Error(
+            `All Windows paste methods failed. Text is copied to clipboard - please paste manually with Ctrl+V. Last error: ${error.message}`
+          );
+        }
+      }
     }
   }
 
-  async pasteWithNircmd(nircmdPath, originalClipboard) {
+  async pasteWithNircmd(nircmdPath) {
     return new Promise((resolve, reject) => {
       const pasteDelay = PASTE_DELAYS.win32_nircmd;
-      const restoreDelay = RESTORE_DELAYS.win32_nircmd;
 
       setTimeout(() => {
         let hasTimedOut = false;
         const startTime = Date.now();
 
-        this.safeLog(`⚡ nircmd paste starting (delay: ${pasteDelay}ms)`);
-
+        debugLogger.debug("nircmd paste starting", { nircmdPath }, "clipboard");
         const pasteProcess = spawn(nircmdPath, ["sendkeypress", "ctrl+v"]);
 
         let errorOutput = "";
-
         pasteProcess.stderr.on("data", (data) => {
           errorOutput += data.toString();
         });
@@ -293,79 +356,65 @@ class ClipboardManager {
         pasteProcess.on("close", (code) => {
           if (hasTimedOut) return;
           clearTimeout(timeoutId);
-
           const elapsed = Date.now() - startTime;
 
           if (code === 0) {
-            this.safeLog(`✅ nircmd paste success`, {
-              elapsedMs: elapsed,
-              restoreDelayMs: restoreDelay,
-            });
-            setTimeout(() => {
-              clipboard.writeText(originalClipboard);
-              this.safeLog("🔄 Clipboard restored");
-            }, restoreDelay);
+            debugLogger.debug("nircmd paste success", { elapsedMs: elapsed }, "clipboard");
             resolve();
           } else {
-            this.safeLog(`❌ nircmd failed (code ${code}), falling back to PowerShell`, {
-              elapsedMs: elapsed,
-              stderr: errorOutput,
-            });
-            this.pasteWithPowerShell(originalClipboard).then(resolve).catch(reject);
+            debugLogger.warn("nircmd failed", { code, stderr: errorOutput }, "clipboard");
+            reject(new Error(`nircmd exited with code ${code}`));
           }
         });
 
         pasteProcess.on("error", (error) => {
           if (hasTimedOut) return;
           clearTimeout(timeoutId);
-          const elapsed = Date.now() - startTime;
-          this.safeLog(`❌ nircmd error, falling back to PowerShell`, {
-            elapsedMs: elapsed,
-            error: error.message,
-          });
-          this.pasteWithPowerShell(originalClipboard).then(resolve).catch(reject);
+          reject(error);
         });
 
         const timeoutId = setTimeout(() => {
           hasTimedOut = true;
-          const elapsed = Date.now() - startTime;
-          this.safeLog(`⏱️ nircmd timeout, falling back to PowerShell`, { elapsedMs: elapsed });
           killProcess(pasteProcess, "SIGKILL");
           pasteProcess.removeAllListeners();
-          this.pasteWithPowerShell(originalClipboard).then(resolve).catch(reject);
+          reject(new Error("nircmd timed out"));
         }, 2000);
       }, pasteDelay);
     });
   }
 
-  async pasteWithPowerShell(originalClipboard) {
+  async pasteWithKeybdEvent() {
     return new Promise((resolve, reject) => {
       const pasteDelay = PASTE_DELAYS.win32_pwsh;
-      const restoreDelay = RESTORE_DELAYS.win32_pwsh;
 
       setTimeout(() => {
         let hasTimedOut = false;
         const startTime = Date.now();
 
-        this.safeLog(`🪟 PowerShell paste starting (delay: ${pasteDelay}ms)`);
+        debugLogger.debug("keybd_event paste starting", {}, "clipboard");
 
-        // Optimized PowerShell command:
-        // - Uses [void] to suppress output (faster)
-        // - WindowStyle Hidden to prevent window flash
-        // - ExecutionPolicy Bypass to skip policy checks
+        // Use keybd_event Win32 API directly via PowerShell Add-Type
+        // This is the most reliable low-level method for simulating keyboard input
+        const psCommand = [
+          "Add-Type -MemberDefinition '",
+          "[DllImport(\"user32.dll\")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);",
+          "' -Name Win32 -Namespace PasteAPI;",
+          "Start-Sleep -Milliseconds 50;",
+          "[PasteAPI.Win32]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero);",   // Ctrl down
+          "[PasteAPI.Win32]::keybd_event(0x56, 0, 0, [UIntPtr]::Zero);",   // V down
+          "[PasteAPI.Win32]::keybd_event(0x56, 0, 2, [UIntPtr]::Zero);",   // V up
+          "[PasteAPI.Win32]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero);",   // Ctrl up
+        ].join(" ");
+
         const pasteProcess = spawn("powershell.exe", [
           "-NoProfile",
           "-NonInteractive",
-          "-WindowStyle",
-          "Hidden",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-Command",
-          "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.SendKeys]::SendWait('^v')",
+          "-WindowStyle", "Hidden",
+          "-ExecutionPolicy", "Bypass",
+          "-Command", psCommand,
         ]);
 
         let errorOutput = "";
-
         pasteProcess.stderr.on("data", (data) => {
           errorOutput += data.toString();
         });
@@ -373,59 +422,82 @@ class ClipboardManager {
         pasteProcess.on("close", (code) => {
           if (hasTimedOut) return;
           clearTimeout(timeoutId);
-
           const elapsed = Date.now() - startTime;
 
           if (code === 0) {
-            this.safeLog(`✅ PowerShell paste success`, {
-              elapsedMs: elapsed,
-              restoreDelayMs: restoreDelay,
-            });
-            setTimeout(() => {
-              clipboard.writeText(originalClipboard);
-              this.safeLog("🔄 Clipboard restored");
-            }, restoreDelay);
+            debugLogger.debug("keybd_event paste success", { elapsedMs: elapsed }, "clipboard");
             resolve();
           } else {
-            this.safeLog(`❌ PowerShell paste failed`, {
-              code,
-              elapsedMs: elapsed,
-              stderr: errorOutput,
-            });
-            reject(
-              new Error(
-                `Windows paste failed with code ${code}. Text is copied to clipboard - please paste manually with Ctrl+V.`
-              )
-            );
+            debugLogger.error("keybd_event paste failed", { code, stderr: errorOutput }, "clipboard");
+            reject(new Error(`keybd_event paste failed with code ${code}`));
           }
         });
 
         pasteProcess.on("error", (error) => {
           if (hasTimedOut) return;
           clearTimeout(timeoutId);
-          const elapsed = Date.now() - startTime;
-          this.safeLog(`❌ PowerShell paste error`, {
-            elapsedMs: elapsed,
-            error: error.message,
-          });
-          reject(
-            new Error(
-              `Windows paste failed: ${error.message}. Text is copied to clipboard - please paste manually with Ctrl+V.`
-            )
-          );
+          reject(error);
         });
 
         const timeoutId = setTimeout(() => {
           hasTimedOut = true;
-          const elapsed = Date.now() - startTime;
-          this.safeLog(`⏱️ PowerShell paste timeout`, { elapsedMs: elapsed });
           killProcess(pasteProcess, "SIGKILL");
           pasteProcess.removeAllListeners();
-          reject(
-            new Error(
-              "Paste operation timed out. Text is copied to clipboard - please paste manually with Ctrl+V."
-            )
-          );
+          reject(new Error("keybd_event paste timed out"));
+        }, 5000);
+      }, pasteDelay);
+    });
+  }
+
+  async pasteWithPowerShell() {
+    return new Promise((resolve, reject) => {
+      const pasteDelay = PASTE_DELAYS.win32_pwsh;
+
+      setTimeout(() => {
+        let hasTimedOut = false;
+        const startTime = Date.now();
+
+        debugLogger.debug("SendKeys paste starting", {}, "clipboard");
+
+        const pasteProcess = spawn("powershell.exe", [
+          "-NoProfile",
+          "-NonInteractive",
+          "-WindowStyle", "Hidden",
+          "-ExecutionPolicy", "Bypass",
+          "-Command",
+          "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.SendKeys]::SendWait('^v')",
+        ]);
+
+        let errorOutput = "";
+        pasteProcess.stderr.on("data", (data) => {
+          errorOutput += data.toString();
+        });
+
+        pasteProcess.on("close", (code) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          const elapsed = Date.now() - startTime;
+
+          if (code === 0) {
+            debugLogger.debug("SendKeys paste success", { elapsedMs: elapsed }, "clipboard");
+            resolve();
+          } else {
+            debugLogger.error("SendKeys paste failed", { code, stderr: errorOutput }, "clipboard");
+            reject(new Error(`SendKeys paste failed with code ${code}`));
+          }
+        });
+
+        pasteProcess.on("error", (error) => {
+          if (hasTimedOut) return;
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+
+        const timeoutId = setTimeout(() => {
+          hasTimedOut = true;
+          killProcess(pasteProcess, "SIGKILL");
+          pasteProcess.removeAllListeners();
+          reject(new Error("SendKeys paste timed out"));
         }, 5000);
       }, pasteDelay);
     });

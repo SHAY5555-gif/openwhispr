@@ -100,6 +100,25 @@ function initializeManagers() {
   environmentManager = new EnvironmentManager();
   debugLogger.refreshLogLevel();
 
+  // Warn if running elevated on Windows - UIPI blocks paste to non-elevated windows
+  if (process.platform === "win32") {
+    try {
+      const { execSync } = require("child_process");
+      execSync("net session", { stdio: "ignore" });
+      // If net session succeeds, we're elevated
+      debugLogger.warn(
+        "Running as Administrator - paste to non-elevated apps will fail (UIPI)"
+      );
+      console.warn(
+        "[WARNING] OpenWhispr is running as Administrator. " +
+          "Paste will NOT work in normal (non-admin) applications. " +
+          "Please restart without admin privileges."
+      );
+    } catch {
+      // Not elevated - this is the correct state
+    }
+  }
+
   windowManager = new WindowManager();
   hotkeyManager = windowManager.hotkeyManager;
   databaseManager = new DatabaseManager();

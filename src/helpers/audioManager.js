@@ -240,7 +240,8 @@ class AudioManager {
         result = await this.processWithOpenAIAPI(audioBlob, metadata);
       }
 
-      this.onTranscriptionComplete?.(result);
+      // Await the callback so paste completes before state is reset in finally block
+      await this.onTranscriptionComplete?.(result);
 
       const roundTripDurationMs = Math.round(performance.now() - pipelineStart);
 
@@ -1435,14 +1436,18 @@ class AudioManager {
   saveRawToCloud(text) {
     const cloudSyncEnabled = localStorage.getItem("cloudSyncEnabled") === "true";
     if (!cloudSyncEnabled) {
+      console.log("[CloudSync] Skipped: cloud sync is disabled");
       return;
     }
 
     const cloudApiUrl = localStorage.getItem("cloudApiUrl") || "";
     if (!cloudApiUrl) {
+      console.log("[CloudSync] Skipped: no API URL configured");
       logger.debug("Cloud sync skipped: no API URL configured", {}, "cloud");
       return;
     }
+
+    console.log("[CloudSync] Saving to:", cloudApiUrl);
 
     const language = localStorage.getItem("preferredLanguage") || "auto";
     const useLocalWhisper = localStorage.getItem("useLocalWhisper") === "true";
@@ -1468,6 +1473,7 @@ class AudioManager {
             .json()
             .catch(() => ({}))
             .then((errorData) => {
+              console.error("[CloudSync] Failed:", response.status, errorData.error || "Unknown error");
               logger.error(
                 "Cloud sync failed",
                 {
@@ -1479,6 +1485,7 @@ class AudioManager {
             });
         } else {
           response.json().then((result) => {
+            console.log("[CloudSync] Success! ID:", result.transcription?.id);
             logger.debug(
               "Raw transcript saved to cloud",
               {
@@ -1490,6 +1497,7 @@ class AudioManager {
         }
       })
       .catch((error) => {
+        console.error("[CloudSync] Network error:", error.message);
         logger.error(
           "Cloud sync error",
           {
