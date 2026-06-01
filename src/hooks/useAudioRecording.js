@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import AudioManager from "../helpers/audioManager";
 import logger from "../utils/logger";
-import { playStartCue, playStopCue } from "../utils/dictationCues";
 import { getSettings } from "../stores/settingsStore";
 import { getRecordingErrorTitle, getRecordingErrorDescription } from "../utils/recordingErrors";
 import { isAccessibilitySkipped } from "../utils/permissions";
@@ -46,7 +45,6 @@ export const useAudioRecording = (toast, options = {}) => {
           window.electronAPI?.pauseMediaPlayback?.();
         }
         window.electronAPI?.registerCancelHotkey?.("Escape");
-        void playStartCue();
       }
 
       return didStart;
@@ -67,17 +65,10 @@ export const useAudioRecording = (toast, options = {}) => {
       window.electronAPI?.unregisterCancelHotkey?.();
 
       if (currentState.isStreaming || currentState.isStreamingStartInProgress) {
-        void playStopCue();
         return await audioManagerRef.current.stopStreamingRecording();
       }
 
-      const didStop = audioManagerRef.current.stopRecording();
-
-      if (didStop) {
-        void playStopCue();
-      }
-
-      return didStop;
+      return audioManagerRef.current.stopRecording();
     } finally {
       stopLockRef.current = false;
     }

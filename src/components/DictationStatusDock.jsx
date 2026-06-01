@@ -60,6 +60,7 @@ export default function DictationStatusDock({
 }) {
   const { className: centralClassName, style: centralStyle, ...centralProps } = centralButtonProps;
   const hint = processing ? processingLabel : active ? stopLabel : hotkeyLabel;
+  const isIdleCompact = compact && !active && !processing;
 
   return (
     <div className={cn("group/flowdock relative flex flex-col items-center", className)}>
@@ -86,18 +87,25 @@ export default function DictationStatusDock({
           title={hint || "Dictate"}
           className={cn(
             "flex shrink-0 items-center justify-center rounded-full",
-            "border border-white/30 bg-[#171515] text-white",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_20px_rgba(0,0,0,0.18)]",
-            "transition-all duration-150 hover:bg-[#211f1f] active:scale-[0.98]",
+            "transition-all duration-150 active:scale-[0.98]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45",
-            compact ? "h-[32px] w-[58px] px-2" : "h-[34px] w-[92px] px-2",
+            isIdleCompact
+              ? "h-[16px] w-[82px] border border-[#b9b9b9] bg-[#8f8f8f] shadow-[inset_0_1px_0_rgba(255,255,255,0.48),inset_0_-1px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.16)] hover:bg-[#858585]"
+              : cn(
+                  "border border-white/30 bg-[#171515] text-white",
+                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_20px_rgba(0,0,0,0.18)]",
+                  "hover:bg-[#211f1f]",
+                  compact ? "h-[32px] w-[58px] px-2" : "h-[34px] w-[92px] px-2"
+                ),
             processing && "cursor-wait opacity-90",
             centralClassName
           )}
           style={centralStyle}
           {...centralProps}
         >
-          <FlowWaveform active={active} compact={compact} audioLevel={audioLevel} />
+          {isIdleCompact ? null : (
+            <FlowWaveform active={active} compact={compact} audioLevel={audioLevel} />
+          )}
         </button>
       </div>
     </div>

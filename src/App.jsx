@@ -4,7 +4,6 @@ import "./index.css";
 import { useToast } from "./components/ui/useToast";
 import { useHotkey } from "./hooks/useHotkey";
 import { formatHotkeyLabel } from "./utils/hotkeys";
-import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useSettingsStore } from "./stores/settingsStore";
 import DictationStatusDock from "./components/DictationStatusDock.jsx";
@@ -17,7 +16,6 @@ export default function App() {
   const { toast, dismiss, toastCount } = useToast();
   const { t } = useTranslation();
   const { hotkey } = useHotkey();
-  const { isDragging, handleMouseDown, handleMouseUp } = useWindowDrag();
 
   const [dragStartPos, setDragStartPos] = useState(null);
   const [hasDragged, setHasDragged] = useState(false);
@@ -263,7 +261,6 @@ export default function App() {
                 setIsCommandMenuOpen(false);
                 setDragStartPos({ x: e.clientX, y: e.clientY });
                 setHasDragged(false);
-                handleMouseDown(e);
               },
               onMouseMove: (e) => {
                 if (dragStartPos && !hasDragged) {
@@ -277,8 +274,7 @@ export default function App() {
                   }
                 }
               },
-              onMouseUp: (e) => {
-                handleMouseUp(e);
+              onMouseUp: () => {
                 setDragStartPos(null);
               },
               onClick: (e) => {
@@ -298,8 +294,7 @@ export default function App() {
               onFocus: () => setIsHovered(true),
               onBlur: () => setIsHovered(false),
               style: {
-                cursor:
-                  micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
+                cursor: micState === "processing" ? "not-allowed" : "pointer",
                 transition:
                   "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease-out",
               },

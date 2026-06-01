@@ -171,7 +171,7 @@ function MainApp() {
 }
 
 function DictationDockPreview() {
-  const [active, setActive] = useState(true);
+  const [active, setActive] = useState(false);
   const previewAudioLevel = active ? 0.72 : 0;
 
   return (
