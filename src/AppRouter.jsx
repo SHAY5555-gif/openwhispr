@@ -6,6 +6,7 @@ import MeetingNotificationOverlay from "./components/MeetingNotificationOverlay.
 import TranscriptionPreviewOverlay from "./components/TranscriptionPreviewOverlay.tsx";
 import UpdateNotificationOverlay from "./components/UpdateNotificationOverlay.tsx";
 import WindowControls from "./components/WindowControls.tsx";
+import DictationStatusDock from "./components/DictationStatusDock.jsx";
 import { Card, CardContent } from "./components/ui/card.tsx";
 import { useAuth } from "./hooks/useAuth";
 import { useTheme } from "./hooks/useTheme";
@@ -28,6 +29,10 @@ export default function AppRouter() {
 
   if (params.includes("transcription-preview=true")) {
     return <TranscriptionPreviewOverlay />;
+  }
+
+  if (import.meta.env.DEV && params.includes("dictation-dock-preview=true")) {
+    return <DictationDockPreview />;
   }
 
   return <MainApp />;
@@ -162,6 +167,26 @@ function MainApp() {
     </Suspense>
   ) : (
     <App />
+  );
+}
+
+function DictationDockPreview() {
+  const [active, setActive] = useState(true);
+
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="fixed bottom-10 left-1/2 -translate-x-1/2">
+        <DictationStatusDock
+          active={active}
+          hotkeyLabel="Dictate Alt + ,"
+          stopLabel="Finish and paste"
+          showHint={true}
+          centralButtonProps={{
+            onClick: () => setActive((current) => !current),
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

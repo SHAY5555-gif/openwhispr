@@ -1,9 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Mic, ArrowUp, Square, Loader2 } from "lucide-react";
+import { Mic, ArrowUp, Loader2 } from "lucide-react";
+import DictationStatusDock from "../DictationStatusDock.jsx";
 import { cn } from "../lib/utils";
-
-const BAR_COUNT = 5;
 
 interface NoteBottomBarProps {
   isRecording: boolean;
@@ -33,22 +32,6 @@ export default function NoteBottomBar({
   const [isExpanded, setIsExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [wasRecording, setWasRecording] = useState(isRecording);
-
-  if (isRecording !== wasRecording) {
-    setWasRecording(isRecording);
-    if (!isRecording) setElapsed(0);
-  }
-
-  useEffect(() => {
-    if (!isRecording) return;
-    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [isRecording]);
-
-  const minutes = String(Math.floor(elapsed / 60)).padStart(2, "0");
-  const seconds = String(elapsed % 60).padStart(2, "0");
 
   const hasText = inputText.trim().length > 0;
 
@@ -93,10 +76,16 @@ export default function NoteBottomBar({
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-0 left-0 right-0 z-10 px-5 pb-4 pt-3 pointer-events-none bg-background"
+      className={cn(
+        "absolute bottom-0 left-0 right-0 z-10 px-5 pb-4 pt-3 pointer-events-none",
+        !isRecording && "bg-background"
+      )}
     >
       <div
-        className={cn("flex items-end gap-2 pointer-events-auto", hideInput && "justify-center")}
+        className={cn(
+          "flex items-end gap-2 pointer-events-auto",
+          (hideInput || isRecording) && "justify-center"
+        )}
       >
         <div
           className={cn(
@@ -105,34 +94,14 @@ export default function NoteBottomBar({
           )}
         >
           {isRecording ? (
-            <button
-              onClick={onStopRecording}
-              className={cn(
-                "flex items-center gap-2 h-10 pl-3.5 pr-3 rounded-xl",
-                "bg-primary/6 dark:bg-primary/10",
-                "border border-primary/20 dark:border-primary/25",
-                "transition-colors duration-150",
-                "hover:bg-primary/10 dark:hover:bg-primary/15"
-              )}
-            >
-              <div className="flex items-end gap-0.5 h-3.5">
-                {Array.from({ length: BAR_COUNT }, (_, i) => (
-                  <div
-                    key={i}
-                    className="w-0.5 rounded-full bg-primary/60 dark:bg-primary/70 origin-bottom"
-                    style={{
-                      height: "100%",
-                      animation: `waveform-bar ${0.5 + i * 0.07}s ease-in-out infinite`,
-                      animationDelay: `${i * 0.04}s`,
-                    }}
-                  />
-                ))}
-              </div>
-              <span className="text-[11px] font-medium tabular-nums text-primary/60 dark:text-primary/70">
-                {minutes}:{seconds}
-              </span>
-              <Square size={9} fill="currentColor" className="text-primary/50" />
-            </button>
+            <DictationStatusDock
+              active={true}
+              stopLabel={t("notes.editor.stop")}
+              showHint={false}
+              centralButtonProps={{
+                onClick: onStopRecording,
+              }}
+            />
           ) : isProcessing ? (
             <div
               className={cn(
@@ -164,7 +133,7 @@ export default function NoteBottomBar({
           )}
         </div>
 
-        {!hideInput && (
+        {!hideInput && !isRecording && (
           <div
             className={cn(
               "flex-1 min-w-0 flex items-center h-10 px-3 gap-2",

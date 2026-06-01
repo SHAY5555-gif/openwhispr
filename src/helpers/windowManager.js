@@ -149,6 +149,22 @@ class WindowManager {
       x: currentBounds.x + currentBounds.width / 2,
       y: currentBounds.y + currentBounds.height,
     });
+
+    const isReturningFromRecordingSize =
+      sizeKey === "BASE" &&
+      currentBounds.width === WINDOW_SIZES.RECORDING.width &&
+      currentBounds.height === WINDOW_SIZES.RECORDING.height;
+
+    if (sizeKey === "RECORDING" || isReturningFromRecordingSize) {
+      const snappedPosition = WindowPositionUtil.getMainWindowPosition(
+        display,
+        newSize,
+        sizeKey === "RECORDING" ? "center" : position
+      );
+      this.mainWindow.setBounds(snappedPosition);
+      return { success: true, bounds: snappedPosition };
+    }
+
     const workArea = display.workArea || display.bounds;
 
     let newX, newY;

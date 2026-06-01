@@ -3,12 +3,12 @@ import { useTranslation } from "react-i18next";
 import "./index.css";
 import { X } from "lucide-react";
 import { useToast } from "./components/ui/useToast";
-import { LoadingDots } from "./components/ui/LoadingDots";
 import { useHotkey } from "./hooks/useHotkey";
 import { formatHotkeyLabel } from "./utils/hotkeys";
 import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useSettingsStore } from "./stores/settingsStore";
+import DictationStatusDock from "./components/DictationStatusDock.jsx";
 
 // Sound Wave Icon Component (for idle/hover states)
 const SoundWaveIcon = ({ size = 16 }) => {
@@ -172,9 +172,21 @@ export default function App() {
     }
   }, [isCommandMenuOpen, isHovered, toastCount, setWindowInteractivity]);
 
+  const handleDictationToggle = React.useCallback(() => {
+    setIsCommandMenuOpen(false);
+    setWindowInteractivity(false);
+  }, [setWindowInteractivity]);
+
+  const { isRecording, isProcessing, toggleListening, cancelRecording, cancelProcessing } =
+    useAudioRecording(toast, {
+      onToggle: handleDictationToggle,
+    });
+
   useEffect(() => {
     const resizeWindow = () => {
-      if (isCommandMenuOpen && toastCount > 0) {
+      if (isRecording) {
+        window.electronAPI?.resizeMainWindow?.("RECORDING");
+      } else if (isCommandMenuOpen && toastCount > 0) {
         window.electronAPI?.resizeMainWindow?.("EXPANDED");
       } else if (isCommandMenuOpen) {
         window.electronAPI?.resizeMainWindow?.("WITH_MENU");
@@ -185,17 +197,7 @@ export default function App() {
       }
     };
     resizeWindow();
-  }, [isCommandMenuOpen, toastCount]);
-
-  const handleDictationToggle = React.useCallback(() => {
-    setIsCommandMenuOpen(false);
-    setWindowInteractivity(false);
-  }, [setWindowInteractivity]);
-
-  const { isRecording, isProcessing, toggleListening, cancelRecording, cancelProcessing } =
-    useAudioRecording(toast, {
-      onToggle: handleDictationToggle,
-    });
+  }, [isCommandMenuOpen, isRecording, toastCount]);
 
   // Sync auto-hide from main process — setState directly to avoid IPC echo
   useEffect(() => {
@@ -298,7 +300,8 @@ export default function App() {
         };
       case "recording":
         return {
-          className: `${baseClasses} bg-primary cursor-pointer`,
+          className:
+            "rounded-full h-14 min-w-40 px-7 flex items-center justify-center relative overflow-hidden bg-[#171515] text-white border border-white/20 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_28px_rgba(0,0,0,0.22)] hover:bg-[#211f1f] transition-all duration-150 active:scale-[0.98]",
           tooltip: t("app.mic.recording"),
         };
       case "processing":
@@ -319,14 +322,17 @@ export default function App() {
 
   return (
     <div className="dictation-window">
-      {/* Voice button - position determined by panelStartPosition setting */}
       <div
-        className={`fixed bottom-1 z-50 ${
-          panelStartPosition === "bottom-left"
-            ? "left-1"
-            : panelStartPosition === "center"
-              ? "left-1/2 -translate-x-1/2"
-              : "right-1"
+        className={`fixed z-50 ${
+          isRecording
+            ? "bottom-4 left-1/2 -translate-x-1/2"
+            : `bottom-1 ${
+                panelStartPosition === "bottom-left"
+                  ? "left-1"
+                  : panelStartPosition === "center"
+                    ? "left-1/2 -translate-x-1/2"
+                    : "right-1"
+              }`
         }`}
       >
         <div
@@ -342,14 +348,12 @@ export default function App() {
             }
           }}
         >
-          {(isRecording || isProcessing) && isHovered && (
+          {isProcessing && isHovered && (
             <button
-              aria-label={
-                isRecording ? t("app.buttons.cancelRecording") : t("app.buttons.cancelProcessing")
-              }
+              aria-label={t("app.buttons.cancelProcessing")}
               onClick={(e) => {
                 e.stopPropagation();
-                isRecording ? cancelRecording() : cancelProcessing();
+                cancelProcessing();
               }}
               className="group/cancel w-5 h-5 rounded-full bg-surface-2/90 hover:bg-destructive border border-border hover:border-destructive/70 flex items-center justify-center transition-colors duration-150 shadow-sm backdrop-blur-sm"
             >
@@ -360,101 +364,156 @@ export default function App() {
               />
             </button>
           )}
-          <Tooltip
-            content={micProps.tooltip}
-            align={
-              panelStartPosition === "bottom-left"
-                ? "left"
-                : panelStartPosition === "center"
-                  ? "center"
-                  : "right"
-            }
-          >
-            <button
-              ref={buttonRef}
-              onMouseDown={(e) => {
-                setIsCommandMenuOpen(false);
-                setDragStartPos({ x: e.clientX, y: e.clientY });
-                setHasDragged(false);
-                handleMouseDown(e);
-              }}
-              onMouseMove={(e) => {
-                if (dragStartPos && !hasDragged) {
-                  const distance = Math.sqrt(
-                    Math.pow(e.clientX - dragStartPos.x, 2) +
-                      Math.pow(e.clientY - dragStartPos.y, 2)
-                  );
-                  if (distance > 5) {
-                    // 5px threshold for drag
-                    setHasDragged(true);
-                  }
-                }
-              }}
-              onMouseUp={(e) => {
-                handleMouseUp(e);
-                setDragStartPos(null);
-              }}
-              onClick={(e) => {
-                if (!hasDragged) {
+          {micState === "recording" ? (
+            <DictationStatusDock
+              active={true}
+              hotkeyLabel={`Dictate ${formatHotkeyLabel(hotkey)}`}
+              stopLabel={t("app.mic.recording")}
+              showHint={false}
+              centralButtonRef={buttonRef}
+              centralButtonProps={{
+                onMouseDown: (e) => {
                   setIsCommandMenuOpen(false);
-                  toggleListening();
-                }
-                e.preventDefault();
+                  setDragStartPos({ x: e.clientX, y: e.clientY });
+                  setHasDragged(false);
+                  handleMouseDown(e);
+                },
+                onMouseMove: (e) => {
+                  if (dragStartPos && !hasDragged) {
+                    const distance = Math.sqrt(
+                      Math.pow(e.clientX - dragStartPos.x, 2) +
+                        Math.pow(e.clientY - dragStartPos.y, 2)
+                    );
+                    if (distance > 5) {
+                      setHasDragged(true);
+                    }
+                  }
+                },
+                onMouseUp: (e) => {
+                  handleMouseUp(e);
+                  setDragStartPos(null);
+                },
+                onClick: (e) => {
+                  if (!hasDragged) {
+                    setIsCommandMenuOpen(false);
+                    toggleListening();
+                  }
+                  e.preventDefault();
+                },
+                onContextMenu: (e) => {
+                  e.preventDefault();
+                  if (!hasDragged) {
+                    setWindowInteractivity(true);
+                    setIsCommandMenuOpen((prev) => !prev);
+                  }
+                },
+                onFocus: () => setIsHovered(true),
+                onBlur: () => setIsHovered(false),
+                style: {
+                  cursor: isDragging ? "grabbing" : "pointer",
+                  transition:
+                    "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease-out",
+                },
               }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                if (!hasDragged) {
-                  setWindowInteractivity(true);
-                  setIsCommandMenuOpen((prev) => !prev);
-                }
+              onPolish={() => {
+                setWindowInteractivity(true);
+                setIsCommandMenuOpen((prev) => !prev);
               }}
-              onFocus={() => setIsHovered(true)}
-              onBlur={() => setIsHovered(false)}
-              className={micProps.className}
-              style={{
-                ...micProps.style,
-                cursor:
-                  micState === "processing"
-                    ? "not-allowed !important"
-                    : isDragging
-                      ? "grabbing !important"
-                      : "pointer !important",
-                transition:
-                  "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease-out",
+              onChat={() => {
+                setWindowInteractivity(true);
+                setIsCommandMenuOpen((prev) => !prev);
               }}
+            />
+          ) : (
+            <Tooltip
+              content={micProps.tooltip}
+              align={
+                panelStartPosition === "bottom-left"
+                  ? "left"
+                  : panelStartPosition === "center"
+                    ? "center"
+                    : "right"
+              }
             >
-              {/* Background effects */}
-              <div
-                className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent transition-opacity duration-150"
-                style={{ opacity: micState === "hover" ? 0.8 : 0 }}
-              ></div>
-              <div
-                className="absolute inset-0 transition-colors duration-150"
-                style={{
-                  backgroundColor: micState === "hover" ? "rgba(0,0,0,0.1)" : "transparent",
+              <button
+                ref={buttonRef}
+                onMouseDown={(e) => {
+                  setIsCommandMenuOpen(false);
+                  setDragStartPos({ x: e.clientX, y: e.clientY });
+                  setHasDragged(false);
+                  handleMouseDown(e);
                 }}
-              ></div>
+                onMouseMove={(e) => {
+                  if (dragStartPos && !hasDragged) {
+                    const distance = Math.sqrt(
+                      Math.pow(e.clientX - dragStartPos.x, 2) +
+                        Math.pow(e.clientY - dragStartPos.y, 2)
+                    );
+                    if (distance > 5) {
+                      // 5px threshold for drag
+                      setHasDragged(true);
+                    }
+                  }
+                }}
+                onMouseUp={(e) => {
+                  handleMouseUp(e);
+                  setDragStartPos(null);
+                }}
+                onClick={(e) => {
+                  if (!hasDragged) {
+                    setIsCommandMenuOpen(false);
+                    toggleListening();
+                  }
+                  e.preventDefault();
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (!hasDragged) {
+                    setWindowInteractivity(true);
+                    setIsCommandMenuOpen((prev) => !prev);
+                  }
+                }}
+                onFocus={() => setIsHovered(true)}
+                onBlur={() => setIsHovered(false)}
+                className={micProps.className}
+                style={{
+                  ...micProps.style,
+                  cursor:
+                    micState === "processing"
+                      ? "not-allowed !important"
+                      : isDragging
+                        ? "grabbing !important"
+                        : "pointer !important",
+                  transition:
+                    "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease-out",
+                }}
+              >
+                {/* Background effects */}
+                <div
+                  className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent transition-opacity duration-150"
+                  style={{ opacity: micState === "hover" ? 0.8 : 0 }}
+                ></div>
+                <div
+                  className="absolute inset-0 transition-colors duration-150"
+                  style={{
+                    backgroundColor: micState === "hover" ? "rgba(0,0,0,0.1)" : "transparent",
+                  }}
+                ></div>
 
-              {/* Dynamic content based on state */}
-              {micState === "idle" || micState === "hover" ? (
-                <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
-              ) : micState === "recording" ? (
-                <LoadingDots />
-              ) : micState === "processing" ? (
-                <VoiceWaveIndicator isListening={true} />
-              ) : null}
+                {/* Dynamic content based on state */}
+                {micState === "idle" || micState === "hover" ? (
+                  <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
+                ) : micState === "processing" ? (
+                  <VoiceWaveIndicator isListening={true} />
+                ) : null}
 
-              {/* State indicator ring for recording */}
-              {micState === "recording" && (
-                <div className="absolute inset-0 rounded-full border-2 border-primary/50 animate-pulse"></div>
-              )}
-
-              {/* State indicator ring for processing */}
-              {micState === "processing" && (
-                <div className="absolute inset-0 rounded-full border-2 border-primary/30 opacity-50"></div>
-              )}
-            </button>
-          </Tooltip>
+                {/* State indicator ring for processing */}
+                {micState === "processing" && (
+                  <div className="absolute inset-0 rounded-full border-2 border-primary/30 opacity-50"></div>
+                )}
+              </button>
+            </Tooltip>
+          )}
           {isCommandMenuOpen && (
             <div
               ref={commandMenuRef}
