@@ -161,6 +161,7 @@ export default function PersonalNotesView({
   const sessionExpectedCount = useMeetingRecordingStore((s) => s.sessionExpectedCount);
   const userTouchedStepper = useMeetingRecordingStore((s) => s.userTouchedStepper);
   const recordingNoteId = useMeetingRecordingStore((s) => s.recordingNoteId);
+  const currentMicLevel = useMeetingRecordingStore((s) => s.currentMicLevel);
 
   const {
     folders,
@@ -929,6 +930,7 @@ export default function PersonalNotesView({
               isSaving={isSaving}
               isRecording={isActiveNoteRecording}
               isProcessing={false}
+              audioLevel={Math.max(0, Math.min(1, Math.sqrt(currentMicLevel) * 3))}
               onStartRecording={startRecording}
               onStopRecording={stopRecording}
               onExportNote={handleExportNote}

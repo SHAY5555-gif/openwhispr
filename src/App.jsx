@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import "./index.css";
-import { X } from "lucide-react";
 import { useToast } from "./components/ui/useToast";
 import { useHotkey } from "./hooks/useHotkey";
 import { formatHotkeyLabel } from "./utils/hotkeys";
@@ -9,73 +8,6 @@ import { useWindowDrag } from "./hooks/useWindowDrag";
 import { useAudioRecording } from "./hooks/useAudioRecording";
 import { useSettingsStore } from "./stores/settingsStore";
 import DictationStatusDock from "./components/DictationStatusDock.jsx";
-
-// Sound Wave Icon Component (for idle/hover states)
-const SoundWaveIcon = ({ size = 16 }) => {
-  return (
-    <div className="flex items-center justify-center gap-1">
-      <div
-        className={`bg-white rounded-full`}
-        style={{ width: size * 0.25, height: size * 0.6 }}
-      ></div>
-      <div className={`bg-white rounded-full`} style={{ width: size * 0.25, height: size }}></div>
-      <div
-        className={`bg-white rounded-full`}
-        style={{ width: size * 0.25, height: size * 0.6 }}
-      ></div>
-    </div>
-  );
-};
-
-// Voice Wave Animation Component (for processing state)
-const VoiceWaveIndicator = ({ isListening }) => {
-  return (
-    <div className="flex items-center justify-center gap-0.5">
-      {[...Array(4)].map((_, i) => (
-        <div
-          key={i}
-          className={`w-0.5 bg-white rounded-full transition-[height] duration-150 ${
-            isListening ? "animate-pulse h-4" : "h-2"
-          }`}
-          style={{
-            animationDelay: isListening ? `${i * 0.1}s` : "0s",
-            animationDuration: isListening ? `${0.6 + i * 0.1}s` : "0s",
-          }}
-        />
-      ))}
-    </div>
-  );
-};
-
-// Tooltip Component
-const Tooltip = ({ children, content, emoji, align = "center" }) => {
-  const [isVisible, setIsVisible] = useState(false);
-
-  const alignClass =
-    align === "right" ? "right-0" : align === "left" ? "left-0" : "left-1/2 -translate-x-1/2";
-
-  const arrowClass =
-    align === "right" ? "right-3" : align === "left" ? "left-3" : "left-1/2 -translate-x-1/2";
-
-  return (
-    <div className="relative inline-block">
-      <div onMouseEnter={() => setIsVisible(true)} onMouseLeave={() => setIsVisible(false)}>
-        {children}
-      </div>
-      {isVisible && (
-        <div
-          className={`absolute bottom-full ${alignClass} mb-2 px-1.5 py-1 text-[10px] text-popover-foreground bg-popover border border-border rounded-md z-10 shadow-lg transition-opacity duration-150 whitespace-nowrap`}
-        >
-          {emoji && <span className="mr-1">{emoji}</span>}
-          {content}
-          <div
-            className={`absolute top-full ${arrowClass} w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-popover`}
-          ></div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default function App() {
   const [isHovered, setIsHovered] = useState(false);
@@ -177,7 +109,7 @@ export default function App() {
     setWindowInteractivity(false);
   }, [setWindowInteractivity]);
 
-  const { isRecording, isProcessing, toggleListening, cancelRecording, cancelProcessing } =
+  const { isRecording, isProcessing, audioLevel, toggleListening, cancelRecording } =
     useAudioRecording(toast, {
       onToggle: handleDictationToggle,
     });
@@ -287,39 +219,6 @@ export default function App() {
 
   const micState = getMicState();
 
-  const getMicButtonProps = () => {
-    const baseClasses =
-      "rounded-full w-10 h-10 flex items-center justify-center relative overflow-hidden border-2 border-white/70 cursor-pointer";
-
-    switch (micState) {
-      case "idle":
-      case "hover":
-        return {
-          className: `${baseClasses} bg-black/50 cursor-pointer`,
-          tooltip: formatHotkeyLabel(hotkey),
-        };
-      case "recording":
-        return {
-          className:
-            "rounded-full h-14 min-w-40 px-7 flex items-center justify-center relative overflow-hidden bg-[#171515] text-white border border-white/20 cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_10px_28px_rgba(0,0,0,0.22)] hover:bg-[#211f1f] transition-all duration-150 active:scale-[0.98]",
-          tooltip: t("app.mic.recording"),
-        };
-      case "processing":
-        return {
-          className: `${baseClasses} bg-accent cursor-not-allowed`,
-          tooltip: t("app.mic.processing"),
-        };
-      default:
-        return {
-          className: `${baseClasses} bg-black/50 cursor-pointer`,
-          style: { transform: "scale(0.8)" },
-          tooltip: t("app.mic.clickToSpeak"),
-        };
-    }
-  };
-
-  const micProps = getMicButtonProps();
-
   return (
     <div className="dictation-window">
       <div
@@ -348,172 +247,64 @@ export default function App() {
             }
           }}
         >
-          {isProcessing && isHovered && (
-            <button
-              aria-label={t("app.buttons.cancelProcessing")}
-              onClick={(e) => {
-                e.stopPropagation();
-                cancelProcessing();
-              }}
-              className="group/cancel w-5 h-5 rounded-full bg-surface-2/90 hover:bg-destructive border border-border hover:border-destructive/70 flex items-center justify-center transition-colors duration-150 shadow-sm backdrop-blur-sm"
-            >
-              <X
-                size={10}
-                strokeWidth={2.5}
-                className="text-foreground group-hover/cancel:text-destructive-foreground transition-colors duration-150"
-              />
-            </button>
-          )}
-          {micState === "recording" ? (
-            <DictationStatusDock
-              active={true}
-              hotkeyLabel={`Dictate ${formatHotkeyLabel(hotkey)}`}
-              stopLabel={t("app.mic.recording")}
-              showHint={false}
-              centralButtonRef={buttonRef}
-              centralButtonProps={{
-                onMouseDown: (e) => {
+          <DictationStatusDock
+            active={isRecording}
+            compact={!isRecording}
+            processing={isProcessing}
+            audioLevel={audioLevel}
+            hotkeyLabel={formatHotkeyLabel(hotkey)}
+            stopLabel={t("app.mic.recording")}
+            processingLabel={t("app.mic.processing")}
+            showHint={false}
+            centralButtonRef={buttonRef}
+            centralButtonProps={{
+              disabled: micState === "processing",
+              onMouseDown: (e) => {
+                setIsCommandMenuOpen(false);
+                setDragStartPos({ x: e.clientX, y: e.clientY });
+                setHasDragged(false);
+                handleMouseDown(e);
+              },
+              onMouseMove: (e) => {
+                if (dragStartPos && !hasDragged) {
+                  const distance = Math.sqrt(
+                    Math.pow(e.clientX - dragStartPos.x, 2) +
+                      Math.pow(e.clientY - dragStartPos.y, 2)
+                  );
+                  if (distance > 5) {
+                    // 5px threshold for drag
+                    setHasDragged(true);
+                  }
+                }
+              },
+              onMouseUp: (e) => {
+                handleMouseUp(e);
+                setDragStartPos(null);
+              },
+              onClick: (e) => {
+                if (!hasDragged && micState !== "processing") {
                   setIsCommandMenuOpen(false);
-                  setDragStartPos({ x: e.clientX, y: e.clientY });
-                  setHasDragged(false);
-                  handleMouseDown(e);
-                },
-                onMouseMove: (e) => {
-                  if (dragStartPos && !hasDragged) {
-                    const distance = Math.sqrt(
-                      Math.pow(e.clientX - dragStartPos.x, 2) +
-                        Math.pow(e.clientY - dragStartPos.y, 2)
-                    );
-                    if (distance > 5) {
-                      setHasDragged(true);
-                    }
-                  }
-                },
-                onMouseUp: (e) => {
-                  handleMouseUp(e);
-                  setDragStartPos(null);
-                },
-                onClick: (e) => {
-                  if (!hasDragged) {
-                    setIsCommandMenuOpen(false);
-                    toggleListening();
-                  }
-                  e.preventDefault();
-                },
-                onContextMenu: (e) => {
-                  e.preventDefault();
-                  if (!hasDragged) {
-                    setWindowInteractivity(true);
-                    setIsCommandMenuOpen((prev) => !prev);
-                  }
-                },
-                onFocus: () => setIsHovered(true),
-                onBlur: () => setIsHovered(false),
-                style: {
-                  cursor: isDragging ? "grabbing" : "pointer",
-                  transition:
-                    "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease-out",
-                },
-              }}
-              onPolish={() => {
-                setWindowInteractivity(true);
-                setIsCommandMenuOpen((prev) => !prev);
-              }}
-              onChat={() => {
-                setWindowInteractivity(true);
-                setIsCommandMenuOpen((prev) => !prev);
-              }}
-            />
-          ) : (
-            <Tooltip
-              content={micProps.tooltip}
-              align={
-                panelStartPosition === "bottom-left"
-                  ? "left"
-                  : panelStartPosition === "center"
-                    ? "center"
-                    : "right"
-              }
-            >
-              <button
-                ref={buttonRef}
-                onMouseDown={(e) => {
-                  setIsCommandMenuOpen(false);
-                  setDragStartPos({ x: e.clientX, y: e.clientY });
-                  setHasDragged(false);
-                  handleMouseDown(e);
-                }}
-                onMouseMove={(e) => {
-                  if (dragStartPos && !hasDragged) {
-                    const distance = Math.sqrt(
-                      Math.pow(e.clientX - dragStartPos.x, 2) +
-                        Math.pow(e.clientY - dragStartPos.y, 2)
-                    );
-                    if (distance > 5) {
-                      // 5px threshold for drag
-                      setHasDragged(true);
-                    }
-                  }
-                }}
-                onMouseUp={(e) => {
-                  handleMouseUp(e);
-                  setDragStartPos(null);
-                }}
-                onClick={(e) => {
-                  if (!hasDragged) {
-                    setIsCommandMenuOpen(false);
-                    toggleListening();
-                  }
-                  e.preventDefault();
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (!hasDragged) {
-                    setWindowInteractivity(true);
-                    setIsCommandMenuOpen((prev) => !prev);
-                  }
-                }}
-                onFocus={() => setIsHovered(true)}
-                onBlur={() => setIsHovered(false)}
-                className={micProps.className}
-                style={{
-                  ...micProps.style,
-                  cursor:
-                    micState === "processing"
-                      ? "not-allowed !important"
-                      : isDragging
-                        ? "grabbing !important"
-                        : "pointer !important",
-                  transition:
-                    "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease-out",
-                }}
-              >
-                {/* Background effects */}
-                <div
-                  className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent transition-opacity duration-150"
-                  style={{ opacity: micState === "hover" ? 0.8 : 0 }}
-                ></div>
-                <div
-                  className="absolute inset-0 transition-colors duration-150"
-                  style={{
-                    backgroundColor: micState === "hover" ? "rgba(0,0,0,0.1)" : "transparent",
-                  }}
-                ></div>
-
-                {/* Dynamic content based on state */}
-                {micState === "idle" || micState === "hover" ? (
-                  <SoundWaveIcon size={micState === "idle" ? 12 : 14} />
-                ) : micState === "processing" ? (
-                  <VoiceWaveIndicator isListening={true} />
-                ) : null}
-
-                {/* State indicator ring for processing */}
-                {micState === "processing" && (
-                  <div className="absolute inset-0 rounded-full border-2 border-primary/30 opacity-50"></div>
-                )}
-              </button>
-            </Tooltip>
-          )}
+                  toggleListening();
+                }
+                e.preventDefault();
+              },
+              onContextMenu: (e) => {
+                e.preventDefault();
+                if (!hasDragged) {
+                  setWindowInteractivity(true);
+                  setIsCommandMenuOpen((prev) => !prev);
+                }
+              },
+              onFocus: () => setIsHovered(true),
+              onBlur: () => setIsHovered(false),
+              style: {
+                cursor:
+                  micState === "processing" ? "not-allowed" : isDragging ? "grabbing" : "pointer",
+                transition:
+                  "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease-out",
+              },
+            }}
+          />
           {isCommandMenuOpen && (
             <div
               ref={commandMenuRef}

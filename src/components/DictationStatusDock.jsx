@@ -1,20 +1,43 @@
-import { MessageSquare, WandSparkles } from "lucide-react";
 import { cn } from "./lib/utils";
 
 const FLOW_BARS = [7, 10, 14, 19, 24, 24, 19, 14, 10, 7];
 
-function FlowWaveform({ active }) {
+function FlowWaveform({ active, compact, audioLevel }) {
+  const level = Math.max(0, Math.min(1, Number(audioLevel) || 0));
+  const center = (FLOW_BARS.length - 1) / 2;
+  const idleScale = compact ? 0.45 : 0.72;
+  const maxHeight = compact ? 18 : 24;
+
   return (
-    <div className="flex h-6 w-[42px] items-center justify-center gap-[3px]">
+    <div
+      className={cn(
+        "flex items-center justify-center",
+        compact ? "h-4 w-[30px] gap-[2px]" : "h-6 w-[42px] gap-[3px]"
+      )}
+    >
       {FLOW_BARS.map((height, index) => (
         <span
           key={`${height}-${index}`}
-          className="block w-[3px] origin-center rounded-full bg-white"
+          className={cn(
+            "block origin-center rounded-full bg-white transition-[height,opacity] duration-75 ease-out",
+            compact ? "w-[2px]" : "w-[3px]"
+          )}
           style={{
-            height,
-            animation: active
-              ? `waveform-bar ${0.78 + (index % 4) * 0.05}s ease-in-out ${index * 0.045}s infinite`
-              : "none",
+            height: Math.round(
+              Math.min(
+                maxHeight,
+                Math.max(
+                  3,
+                  height * idleScale +
+                    (active
+                      ? level *
+                        (compact ? 12 : 18) *
+                        (0.45 + (1 - Math.abs(index - center) / center))
+                      : 0)
+                )
+              )
+            ),
+            opacity: active ? 1 : 0.82,
           }}
         />
       ))}
@@ -22,43 +45,21 @@ function FlowWaveform({ active }) {
   );
 }
 
-function DockButton({ children, className, onClick, ...props }) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick?.(event);
-      }}
-      className={cn(
-        "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full",
-        "border border-white/30 bg-[#171515] text-white",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_20px_rgba(0,0,0,0.18)]",
-        "transition-colors duration-150 hover:bg-[#211f1f]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45",
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
 export default function DictationStatusDock({
   active = true,
+  compact = false,
+  audioLevel = 0,
+  processing = false,
   className = undefined,
   centralButtonRef = undefined,
   centralButtonProps = {},
   hotkeyLabel = undefined,
   stopLabel = "Finish and paste",
-  language = "EN",
-  onPolish = undefined,
-  onChat = undefined,
+  processingLabel = "Processing...",
   showHint = false,
 }) {
   const { className: centralClassName, style: centralStyle, ...centralProps } = centralButtonProps;
-  const hint = active ? stopLabel : hotkeyLabel;
+  const hint = processing ? processingLabel : active ? stopLabel : hotkeyLabel;
 
   return (
     <div className={cn("group/flowdock relative flex flex-col items-center", className)}>
@@ -77,37 +78,27 @@ export default function DictationStatusDock({
         </div>
       ) : null}
 
-      <div className="flex h-[38px] items-center justify-center gap-[7px]">
-        <DockButton aria-label="Language" title="Language" className="text-[11px] font-semibold">
-          {language}
-        </DockButton>
-
+      <div className="flex h-[38px] items-center justify-center">
         <button
           ref={centralButtonRef}
           type="button"
-          aria-label={active ? stopLabel : hotkeyLabel || "Dictate"}
-          title={active ? stopLabel : hotkeyLabel || "Dictate"}
+          aria-label={hint || "Dictate"}
+          title={hint || "Dictate"}
           className={cn(
-            "flex h-[34px] w-[92px] shrink-0 items-center justify-center rounded-full px-2",
+            "flex shrink-0 items-center justify-center rounded-full",
             "border border-white/30 bg-[#171515] text-white",
             "shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_20px_rgba(0,0,0,0.18)]",
             "transition-all duration-150 hover:bg-[#211f1f] active:scale-[0.98]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45",
+            compact ? "h-[32px] w-[58px] px-2" : "h-[34px] w-[92px] px-2",
+            processing && "cursor-wait opacity-90",
             centralClassName
           )}
           style={centralStyle}
           {...centralProps}
         >
-          <FlowWaveform active={active} />
+          <FlowWaveform active={active} compact={compact} audioLevel={audioLevel} />
         </button>
-
-        <DockButton aria-label="Polish" title="Polish" onClick={onPolish}>
-          <WandSparkles size={15} strokeWidth={2.2} />
-        </DockButton>
-
-        <DockButton aria-label="Chat" title="Chat" onClick={onChat}>
-          <MessageSquare size={15} strokeWidth={2.2} />
-        </DockButton>
       </div>
     </div>
   );

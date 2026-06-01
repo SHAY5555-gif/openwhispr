@@ -121,6 +121,7 @@ class AudioManager {
     this.onError = null;
     this.onTranscriptionComplete = null;
     this.onPartialTranscript = null;
+    this.onAudioLevel = null;
     this.cachedApiKey = null;
     this.cachedApiKeyProvider = null;
 
@@ -159,6 +160,8 @@ class AudioManager {
     this.lastAudioBlob = null;
     this.lastAudioMetadata = null;
     this._localSpeechGateState = null;
+    this._lastAudioLevel = 0;
+    this._lastAudioLevelEmitAt = 0;
   }
 
   getWorkletBlobUrl() {
@@ -210,18 +213,49 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
     return words.length > 0 ? words.join(", ") : null;
   }
 
-  setCallbacks({
-    onStateChange,
-    onError,
-    onTranscriptionComplete,
-    onPartialTranscript,
-    onStreamingCommit,
-  }) {
+  setCallbacks(callbacks = {}) {
+    const {
+      onStateChange,
+      onError,
+      onTranscriptionComplete,
+      onPartialTranscript,
+      onStreamingCommit,
+      onAudioLevel = null,
+    } = callbacks;
     this.onStateChange = onStateChange;
     this.onError = onError;
     this.onTranscriptionComplete = onTranscriptionComplete;
     this.onPartialTranscript = onPartialTranscript;
     this.onStreamingCommit = onStreamingCommit;
+    this.onAudioLevel = onAudioLevel;
+  }
+
+  emitAudioLevel(rms, peak) {
+    const level = Math.max(0, Math.min(1, Math.max((rms - 0.01) * 24, (peak - 0.03) * 3.2)));
+    const now = performance.now();
+    if (now - this._lastAudioLevelEmitAt < 45 && Math.abs(level - this._lastAudioLevel) < 0.04) {
+      return;
+    }
+    this._lastAudioLevel = level;
+    this._lastAudioLevelEmitAt = now;
+    this.onAudioLevel?.({ level, rms, peak });
+  }
+
+  resetAudioLevel() {
+    this._lastAudioLevel = 0;
+    this._lastAudioLevelEmitAt = 0;
+    this.onAudioLevel?.({ level: 0, rms: 0, peak: 0 });
+  }
+
+  cleanupAudioLevelMonitor() {
+    if (this._silenceInterval) {
+      clearInterval(this._silenceInterval);
+      this._silenceInterval = null;
+    }
+    this._silenceCtx?.close().catch(() => {});
+    this._silenceCtx = null;
+    this._silenceAnalyser = null;
+    this.resetAudioLevel();
   }
 
   setSkipReasoning(skip) {
@@ -370,6 +404,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
           }
           const rms = Math.sqrt(sum / dataArray.length);
           recordLocalSpeechWindow(this._localSpeechGateState, rms, peak);
+          this.emitAudioLevel(rms, peak);
         }, 100);
       } catch (e) {
         logger.warn("Audio level gate setup failed, skipping", { error: e.message }, "audio");
@@ -386,13 +421,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       };
 
       this.mediaRecorder.onstop = async () => {
-        if (this._silenceInterval) {
-          clearInterval(this._silenceInterval);
-          this._silenceInterval = null;
-        }
-        this._silenceCtx?.close().catch(() => {});
-        this._silenceCtx = null;
-        this._silenceAnalyser = null;
+        this.cleanupAudioLevelMonitor();
 
         this.cleanupPreview({ showCleanup: this.shouldShowPreviewCleanupState() });
 
@@ -495,6 +524,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
     if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
       this.mediaRecorder.onstop = () => {
         this.cleanupPreview({ dismiss: true });
+        this.cleanupAudioLevelMonitor();
         this.isRecording = false;
         this.isProcessing = false;
         this.audioChunks = [];
@@ -2228,6 +2258,16 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
 
       this.streamingProcessor.port.onmessage = (event) => {
         if (!this.isStreaming) return;
+        const pcm = new Int16Array(event.data);
+        let sum = 0;
+        let peak = 0;
+        for (let i = 0; i < pcm.length; i += 4) {
+          const v = pcm[i] / 32768;
+          sum += v * v;
+          const abs = Math.abs(v);
+          if (abs > peak) peak = abs;
+        }
+        this.emitAudioLevel(Math.sqrt(sum / Math.max(1, Math.ceil(pcm.length / 4))), peak);
         provider.send(event.data);
       };
 
@@ -2443,6 +2483,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       this.streamingSource = null;
     }
     this.streamingAudioContext = null;
+    this.resetAudioLevel();
 
     // Stop fallback recorder before stopping media tracks
     let fallbackBlob = null;
@@ -2821,6 +2862,7 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
     this.onTranscriptionComplete = null;
     this.onPartialTranscript = null;
     this.onStreamingCommit = null;
+    this.onAudioLevel = null;
     if (this._onApiKeyChanged) {
       window.removeEventListener("api-key-changed", this._onApiKeyChanged);
     }

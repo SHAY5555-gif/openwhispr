@@ -172,12 +172,15 @@ function MainApp() {
 
 function DictationDockPreview() {
   const [active, setActive] = useState(true);
+  const previewAudioLevel = active ? 0.72 : 0;
 
   return (
     <div className="min-h-screen bg-white">
       <div className="fixed bottom-10 left-1/2 -translate-x-1/2">
         <DictationStatusDock
           active={active}
+          compact={!active}
+          audioLevel={previewAudioLevel}
           hotkeyLabel="Dictate Alt + ,"
           stopLabel="Finish and paste"
           showHint={true}

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Mic, ArrowUp, Loader2 } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import DictationStatusDock from "../DictationStatusDock.jsx";
 import { cn } from "../lib/utils";
 
@@ -11,6 +11,7 @@ interface NoteBottomBarProps {
   onStopRecording: () => void;
   onAskSubmit: (text: string) => void;
   onInputFocus?: () => void;
+  audioLevel?: number;
   askDisabled?: boolean;
   actionPicker?: React.ReactNode;
   hideInput?: boolean;
@@ -23,6 +24,7 @@ export default function NoteBottomBar({
   onStopRecording,
   onAskSubmit,
   onInputFocus,
+  audioLevel = 0,
   askDisabled,
   actionPicker,
   hideInput,
@@ -96,6 +98,7 @@ export default function NoteBottomBar({
           {isRecording ? (
             <DictationStatusDock
               active={true}
+              audioLevel={audioLevel}
               stopLabel={t("notes.editor.stop")}
               showHint={false}
               centralButtonProps={{
@@ -103,33 +106,21 @@ export default function NoteBottomBar({
               }}
             />
           ) : isProcessing ? (
-            <div
-              className={cn(
-                "flex items-center justify-center w-10 h-10 rounded-xl",
-                "bg-foreground/3 dark:bg-white/4",
-                "border border-border/20 dark:border-white/6"
-              )}
-            >
-              <Loader2 size={14} className="animate-spin text-foreground/25" />
-            </div>
+            <DictationStatusDock
+              compact={true}
+              processing={true}
+              processingLabel={t("app.mic.processing")}
+              showHint={false}
+            />
           ) : (
-            <button
-              onClick={onStartRecording}
-              className={cn(
-                "flex items-center justify-center w-10 h-10 rounded-xl",
-                "bg-foreground/3 dark:bg-white/4",
-                "border border-border/20 dark:border-white/6",
-                "text-foreground/30 dark:text-foreground/20",
-                "transition-all duration-200",
-                "hover:bg-foreground/6 dark:hover:bg-white/8",
-                "hover:text-foreground/50 dark:hover:text-foreground/35",
-                "hover:border-border/30 dark:hover:border-white/10",
-                "active:scale-95"
-              )}
-              aria-label={t("notes.editor.transcribe")}
-            >
-              <Mic size={15} />
-            </button>
+            <DictationStatusDock
+              compact={true}
+              hotkeyLabel={t("notes.editor.transcribe")}
+              showHint={false}
+              centralButtonProps={{
+                onClick: onStartRecording,
+              }}
+            />
           )}
         </div>
 
