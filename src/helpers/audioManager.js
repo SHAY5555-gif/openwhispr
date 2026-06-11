@@ -1454,17 +1454,21 @@ class AudioManager {
     const model = useLocalWhisper
       ? localStorage.getItem("whisperModel") || "base"
       : this.getTranscriptionModel();
+    const cloudApiToken = (localStorage.getItem("cloudApiToken") || "").trim();
+    const headers = {
+      "Content-Type": "application/json",
+      ...(cloudApiToken ? { Authorization: `Bearer ${cloudApiToken}` } : {}),
+    };
 
     // Fire-and-forget - don't await, don't block the transcription pipeline
     fetch(`${cloudApiUrl}/api/transcripts`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         text,
         language: language !== "auto" ? language : null,
         model,
+        source: "openwhispr",
       }),
     })
       .then((response) => {

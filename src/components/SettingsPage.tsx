@@ -186,6 +186,9 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   const [cloudApiUrl, setCloudApiUrl] = useState(() => {
     return localStorage.getItem("cloudApiUrl") || "";
   });
+  const [cloudApiToken, setCloudApiToken] = useState(() => {
+    return localStorage.getItem("cloudApiToken") || "";
+  });
 
   // Save cloud sync settings to localStorage
   useEffect(() => {
@@ -195,6 +198,10 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
   useEffect(() => {
     localStorage.setItem("cloudApiUrl", cloudApiUrl);
   }, [cloudApiUrl]);
+
+  useEffect(() => {
+    localStorage.setItem("cloudApiToken", cloudApiToken);
+  }, [cloudApiToken]);
 
   // Load auto-start state on mount (not supported on Linux)
   useEffect(() => {
@@ -711,6 +718,19 @@ export default function SettingsPage({ activeSection = "general" }: SettingsPage
                     />
                     <p className="text-xs text-gray-500">
                       Enter the URL of your deployed Vercel app. Transcriptions will be sent to /api/transcripts.
+                    </p>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Access token
+                    </label>
+                    <Input
+                      type="password"
+                      placeholder="Your app's access token"
+                      value={cloudApiToken}
+                      onChange={(e) => setCloudApiToken(e.target.value)}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Sent as a bearer token with every transcript. For Learning Feed, paste the same access token you use to sign in.
                     </p>
                   </div>
                 )}

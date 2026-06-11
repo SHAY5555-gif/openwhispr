@@ -26,6 +26,21 @@ async function ensureTable() {
   `;
 }
 
+function requireToken(req, res) {
+  const expected = (process.env.TRANSCRIPTS_API_TOKEN || '').trim();
+  if (!expected) {
+    res.status(500).json({ error: 'TRANSCRIPTS_API_TOKEN is not configured' });
+    return false;
+  }
+  const header = String(req.headers.authorization || '').trim();
+  const received = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : header;
+  if (received !== expected) {
+    res.status(401).json({ error: 'Access token required' });
+    return false;
+  }
+  return true;
+}
+
 export default async function handler(req, res) {
   // Set CORS headers for external agent access
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -34,6 +49,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  if (!requireToken(req, res)) {
+    return;
   }
 
   try {
